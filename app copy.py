@@ -5,7 +5,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from bson.json_util import dumps
 from bson.objectid import ObjectId  # Import ObjectId to handle MongoDB Object IDs
-
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from gensim.models import Word2Vec
+import numpy as np
 
 
 from flask_cors import CORS # type: ignore
@@ -17,82 +21,6 @@ client = MongoClient("mongodb+srv://miasetyautami:20xO81m3RtBrqBZr@cluster1.ohir
 db = client['makeup_product']
 collection = db['desc_product_full']
 
-
-@app.route('/products', methods=['GET'])
-def get_products():
-    """Fetch all product descriptions from MongoDB."""
-    try:
-        products = collection.find().sort("price", -1).limit(20)  # Sort by price in ascending order
-        return dumps(products)  # Use dumps for JSON serialization
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/products/<int:product_id>', methods=['GET'])  # Mengubah tipe parameter ke int
-def get_product(product_id):
-    """Fetch a product description by ID from MongoDB."""
-    try:
-        print(f"Received product_id: {product_id}")  # Debugging line
-        product = collection.find_one({"product_id": product_id})  # Query menggunakan product_id sebagai Int
-        if product:
-            print(product) 
-            return dumps(product)  # Serialize the product data
-        else:
-            return jsonify({"error": "Product not found"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-
-# def get_top_similar_products_mongo(target_product_id, skin_type='', skin_tone='', under_tone='', top_n=5):
-#     df_produk = pd.DataFrame(list(collection.find()))
-#     df_produk['unique_data_clean'] = df_produk['unique_data_clean'].astype(str).fillna('')
-#     target_product_row = df_produk[df_produk['product_id'] == target_product_id]
-#     if target_product_row.empty:
-#         return []
-#     target_product_description = target_product_row['unique_data_clean'].values[0]
-#     target_makeup_type = target_product_row['makeup_part'].values[0]
-#     if skin_type:
-#         target_product_description += f" {skin_type}"
-#     if skin_tone:
-#         target_product_description += f" {skin_tone}"
-#     if under_tone:
-#         target_product_description += f" {under_tone}"
-#     df_produk.loc[target_product_row.index, 'unique_data_clean'] = target_product_description
-#     vectorizer = TfidfVectorizer()
-#     tfidf_matrix = vectorizer.fit_transform(df_produk['unique_data_clean'])
-#     target_vector = tfidf_matrix[df_produk.index[df_produk['product_id'] == target_product_id][0]]
-#     cosine_sim = cosine_similarity(target_vector, tfidf_matrix)
-#     similarity_scores = list(enumerate(cosine_sim[0]))
-#     sorted_similar_items = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
-#     similar_products_filtered = []
-#     for i, score in sorted_similar_items:
-#         product_id = df_produk['product_id'].iloc[i]
-#         makeup_part = df_produk['makeup_part'].iloc[i]
-#         if makeup_part == target_makeup_type and product_id != target_product_id:
-#             product_name = df_produk['product_name'].iloc[i]
-#             similar_products_filtered.append({
-#                 "product_id": product_id,
-#                 "product_name": product_name,
-#                 "makeup_part": makeup_part,
-#                 "score": score
-#             })
-#         if len(similar_products_filtered) >= top_n * 3:
-#             break
-#     return similar_products_filtered, target_makeup_type
-
-# @app.route('/recommendcbf', methods=['GET'])
-# def recommend():
-#     target_product_id = int(request.args.get('product_id'))
-#     skin_type = request.args.get('skin_type', '')
-#     skin_tone = request.args.get('skin_tone', '')
-#     under_tone = request.args.get('under_tone', '')
-#     top_n = int(request.args.get('top_n', 5))
-#     top_similar_products, target_makeup_type = get_top_similar_products_mongo(target_product_id, skin_type, skin_tone, under_tone, top_n)
-#     response = {
-#         "target_makeup_type": target_makeup_type,
-#         "top_similar_products": top_similar_products[:top_n]
-#     }
-#     return jsonify(response)
 
 def cbf_tfidf(target_product_id, skin_type='', skin_tone='', under_tone='', top_n=''):
     df_produk = pd.DataFrame(list(collection.find()))
@@ -221,6 +149,28 @@ def cbf_word2vec(target_product_id, skin_type='', skin_tone='', under_tone='', t
 
     return limited_unique_products, target_makeup_type
 
+@app.route('/products', methods=['GET'])
+def get_products():
+    """Fetch all product descriptions from MongoDB."""
+    try:
+        products = collection.find().sort("price", -1).limit(20)  # Sort by price in ascending order
+        return dumps(products)  # Use dumps for JSON serialization
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/products/<int:product_id>', methods=['GET'])  # Mengubah tipe parameter ke int
+def get_product(product_id):
+    """Fetch a product description by ID from MongoDB."""
+    try:
+        print(f"Received product_id: {product_id}")  # Debugging line
+        product = collection.find_one({"product_id": product_id})  # Query menggunakan product_id sebagai Int
+        if product:
+            print(product) 
+            return dumps(product)  # Serialize the product data
+        else:
+            return jsonify({"error": "Product not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/recommend/cbf/tdidf', methods=['GET'])
 def recommend_cbf_tfidf():
@@ -275,18 +225,3 @@ def recommend_cbf_word2vec():
 if __name__ == "__main__":
     app.run(debug=True)
 CORS(app)
-
-
-# from flask import Flask
-# from flask_cors import CORS  # type: ignore
-# from routes import configure_routes  # Import dari routes
-
-# app = Flask(__name__)
-
-
-# # Konfigurasi route
-# configure_routes(app)
-
-# if __name__ == "__main__":
-#     app.run(debug=True)
-# CORS(app)
