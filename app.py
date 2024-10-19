@@ -5,16 +5,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from bson.json_util import dumps
 from bson.objectid import ObjectId  # Import ObjectId to handle MongoDB Object IDs
-from flask import Flask, request, jsonify
-from pymongo import MongoClient
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from bson.json_util import dumps
-from bson.objectid import ObjectId  # Import ObjectId to handle MongoDB Object IDs
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from gensim.models import Word2Vec
 import numpy as np
 
@@ -233,7 +223,7 @@ def cbf_word2vec(target_product_id, skin_type='', skin_tone='', under_tone='', t
     return limited_unique_products, target_makeup_type
 
 
-@app.route('/recommend/cbf/tdidf', methods=['GET'])
+@app.route('/recommend/cbf/tfidf', methods=['GET'])
 def recommend_cbf_tfidf():
     target_product_id = int(request.args.get('product_id'))
     skin_type = request.args.get('skin_type', '')
