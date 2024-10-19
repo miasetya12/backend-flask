@@ -1,0 +1,7 @@
+name: env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - scikit-surprise
+  # tambahkan dependensi lain yang diperlukan
