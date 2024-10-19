@@ -7,6 +7,8 @@ from bson.json_util import dumps
 from bson.objectid import ObjectId  # Import ObjectId to handle MongoDB Object IDs
 # from gensim.models import Word2Vec
 import numpy as np
+from surprise import Dataset, Reader, SVD, accuracy
+from sklearn.model_selection import train_test_split
 
 
 from flask_cors import CORS # type: ignore
@@ -271,6 +273,88 @@ def recommend_cbf_word2vec():
     
     return jsonify(response)
 
+
+
+
+def recommend_products_from_ratings_mongo(user_id, skin_type='', skin_tone='', under_tone='', num_recommendations=15, test_size=0.2, n_factors=20, n_epochs=20, lr_all=0.01, reg_all=0.1):
+    # Load data from MongoDB collections
+    ratings_collection = db['review_product']
+    products_collection = db['desc_product_full']
+
+    # Convert MongoDB collections to pandas DataFrames
+    data = pd.DataFrame(list(ratings_collection.find()))
+    products = pd.DataFrame(list(products_collection.find()))
+
+    filter_conditions = []
+
+    if under_tone:
+        filter_conditions.append(data['undertone'] == under_tone)
+    if skin_type:
+        filter_conditions.append(data['skintype'] == skin_type)
+    if skin_tone:
+        filter_conditions.append(data['skintone'] == skin_tone)
+
+    # Apply filter if any conditions exist
+    if filter_conditions:
+        filtered_data = data[np.logical_and.reduce(filter_conditions)]
+
+        # Check if the size of the filtered data is less than 2076
+        while len(filtered_data) < 2076 and filter_conditions:
+            filter_conditions.pop()  # Remove the last filter
+            filtered_data = data[np.logical_and.reduce(filter_conditions)] if filter_conditions else data
+            if len(filtered_data) >= 2076:
+                break
+        else:
+            filtered_data = data  # Use the full dataset if not enough filtered data
+    else:
+        filtered_data = data
+
+    # Train-test split
+    train_data, test_data = train_test_split(filtered_data, test_size=test_size, random_state=42)
+    reader = Reader(rating_scale=(1, 5))
+
+    # Prepare dataset for Surprise library
+    trainset = Dataset.load_from_df(train_data[['user_id', 'product_id', 'stars']], reader).build_full_trainset()
+    testset = Dataset.load_from_df(test_data[['user_id', 'product_id', 'stars']], reader).build_full_trainset().build_testset()
+
+    # Train the model
+    model = SVD(n_factors=n_factors, n_epochs=n_epochs, lr_all=lr_all, reg_all=reg_all)
+    model.fit(trainset)
+
+    predictions = model.test(testset)
+
+    # Retrieve unrated items for the user
+    all_items = filtered_data['product_id'].unique()
+    user_ratings = filtered_data[filtered_data['user_id'] == user_id]
+    rated_items = user_ratings['product_id'].unique()
+    unrated_items = [item for item in all_items if item not in rated_items]
+
+    # Predict ratings for unrated items
+    predicted_ratings = [(item, model.predict(user_id, item).est) for item in unrated_items]
+    predicted_ratings.sort(key=lambda x: x[1], reverse=True)
+
+    # Prepare the recommendations DataFrame
+    recommendations = [(pred[0], round(pred[1], 4)) for pred in predicted_ratings[:num_recommendations]]
+    recommendations_df = pd.DataFrame(recommendations, columns=['product_id', 'predicted_rating'])
+
+    # Merge with product details
+    merged_recommendations = recommendations_df.merge(products[['product_id', 'product_name', 'makeup_part']], on='product_id', how='left')
+
+    return merged_recommendations
+
+@app.route('/recommend/svd', methods=['GET'])
+def recommend():
+    user_id = request.args.get('user_id', type=int)
+    skin_type = request.args.get('skin_type', default='', type=str)
+    skin_tone = request.args.get('skin_tone', default='', type=str)
+    under_tone = request.args.get('under_tone', default='', type=str)
+    num_recommendations = request.args.get('num_recommendations', default=15, type=int)
+
+    # Call the recommendation function
+    recommendations = recommend_products_from_ratings_mongo(user_id, skin_type, skin_tone, under_tone, num_recommendations)
+
+    # Convert recommendations to JSON format
+    return jsonify(recommendations.to_dict(orient='records'))
 
 
 if __name__ == "__main__":
