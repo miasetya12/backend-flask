@@ -5,10 +5,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from bson.json_util import dumps
 from bson.objectid import ObjectId  # Import ObjectId to handle MongoDB Object IDs
-
-
-
 from flask_cors import CORS # type: ignore
+from gensim.models import Word2Vec
+import numpy as np
 
 app = Flask(__name__)
 
@@ -17,159 +16,211 @@ client = MongoClient("mongodb+srv://miasetyautami:20xO81m3RtBrqBZr@cluster1.ohir
 db = client['makeup_product']
 collection = db['desc_product_full']
 
+def get_collection():
+    """Return the MongoDB collection."""
+    return collection
 
-# Fungsi untuk mendapatkan produk serupa
-def get_top_similar_products(data, target_product_id, skin_type='', makeup_type='', top_n=5):
-    df_produk = pd.DataFrame(data)
-    df_produk['unique_data_clean'] = df_produk['unique_data_clean'].astype(str).fillna('')
-
-    # Cari baris produk target berdasarkan product_id
-    target_product_row = df_produk[df_produk['product_id'] == target_product_id]
-    if target_product_row.empty:
-        return []
-    target_product_description = target_product_row['unique_data_clean'].values[0]
-    target_makeup_type = target_product_row['makeup_part'].values[0]
-
-    # Tambahkan skin_type dan makeup_type jika ada
-    if skin_type:
-        target_product_description += f" {skin_type}"
-    if makeup_type:
-        target_product_description += f" {makeup_type}"
-
-    # Update deskripsi produk target
-    df_produk.loc[target_product_row.index, 'unique_data_clean'] = target_product_description
-
-    # Vectorizer TF-IDF
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(df_produk['unique_data_clean'])
-
-    # Hitung kemiripan kosinus
-    target_vector = tfidf_matrix[df_produk.index[df_produk['product_id'] == target_product_id][0]]
-    cosine_sim = cosine_similarity(target_vector, tfidf_matrix)
-
-    # Ambil skor kemiripan
-    similarity_scores = list(enumerate(cosine_sim[0]))
-
-    # Urutkan berdasarkan skor tertinggi
-    sorted_similar_items = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
-
-    # Pilih top_n produk yang mirip
-    top_similar_items = sorted_similar_items[1:top_n + 1]
-
-    similar_products = []
-    for i, score in top_similar_items:
-        product_name = df_produk['product_name'].iloc[i]
-        product_id = int(df_produk['product_id'].iloc[i])  # Mengonversi ke int
-        similar_products.append((product_id, product_name, score))
-
-    return similar_products, target_makeup_type
-
-
-@app.route('/products', methods=['GET'])
-def get_products():
-    """Fetch all product descriptions from MongoDB."""
-    try:
-        products = collection.find().sort("price", -1).limit(20)  # Sort by price in ascending order
-        return dumps(products)  # Use dumps for JSON serialization
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# Endpoint Flask untuk rekomendasi produk
-@app.route('/recommend', methods=['GET'])
-def recommend_products():
-    try:
-        # Ambil parameter dari request
-        target_product_id = int(request.args.get('product_id'))
-        skin_type = request.args.get('skin_type', '')
-        makeup_type = request.args.get('makeup_type', '')
-        top_n = int(request.args.get('top_n', 5))
-
-        # Ambil data dari MongoDB
-        data = list(collection.find({}, {"_id": 0}))  # Menghilangkan _id dari hasil
-
-        # Dapatkan produk yang mirip
-        top_similar_products, target_makeup_type = get_top_similar_products(data, target_product_id, skin_type, makeup_type, top_n)
-
-        # Format hasil menjadi JSON
-        result = {
-            "target_product_id": target_product_id,
-            "target_makeup_type": target_makeup_type,
-            "similar_products": [
-                {"product_id": int(product_id), "product_name": product_name, "similarity_score": float(score)}  # Mengonversi ke int dan float
-                for product_id, product_name, score in top_similar_products
-            ]
-        }
-
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/products/<int:product_id>', methods=['GET'])  # Mengubah tipe parameter ke int
-def get_product(product_id):
-    """Fetch a product description by ID from MongoDB."""
-    try:
-        print(f"Received product_id: {product_id}")  # Debugging line
-        product = collection.find_one({"product_id": product_id})  # Query menggunakan product_id sebagai Int
-        if product:
-            print(product) 
-            return dumps(product)  # Serialize the product data
-        else:
-            return jsonify({"error": "Product not found"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-
-def get_top_similar_products_mongo(target_product_id, skin_type='', skin_tone='', under_tone='', top_n=5):
+def cbf_tfidf(target_product_id, skin_type='', skin_tone='', under_tone='', top_n=''):
+    collection = get_collection()  # Get collection
     df_produk = pd.DataFrame(list(collection.find()))
     df_produk['unique_data_clean'] = df_produk['unique_data_clean'].astype(str).fillna('')
+    
     target_product_row = df_produk[df_produk['product_id'] == target_product_id]
     if target_product_row.empty:
-        return []
+        return [], None  # Return empty list and None if product not found
+
     target_product_description = target_product_row['unique_data_clean'].values[0]
     target_makeup_type = target_product_row['makeup_part'].values[0]
+
+    # Append skin type, tone, and undertone to the description
     if skin_type:
         target_product_description += f" {skin_type}"
     if skin_tone:
         target_product_description += f" {skin_tone}"
     if under_tone:
         target_product_description += f" {under_tone}"
+
     df_produk.loc[target_product_row.index, 'unique_data_clean'] = target_product_description
     vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform(df_produk['unique_data_clean'])
     target_vector = tfidf_matrix[df_produk.index[df_produk['product_id'] == target_product_id][0]]
     cosine_sim = cosine_similarity(target_vector, tfidf_matrix)
+
     similarity_scores = list(enumerate(cosine_sim[0]))
     sorted_similar_items = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
+
     similar_products_filtered = []
+    unique_products = set()  # Use a set to keep track of unique product names
+
     for i, score in sorted_similar_items:
         product_id = df_produk['product_id'].iloc[i]
         makeup_part = df_produk['makeup_part'].iloc[i]
+
         if makeup_part == target_makeup_type and product_id != target_product_id:
             product_name = df_produk['product_name'].iloc[i]
-            similar_products_filtered.append({
-                "product_id": product_id,
-                "product_name": product_name,
-                "makeup_part": makeup_part,
-                "score": score
-            })
-        if len(similar_products_filtered) >= top_n * 3:
+            if product_name not in unique_products:  # Check for uniqueness
+                unique_products.add(product_name)  # Add to set
+                similar_products_filtered.append({
+                    "product_id": int(product_id),
+                    "product_name": product_name,
+                    "makeup_part": makeup_part,
+                    "score": float(score)
+                })
+        
+        if len(similar_products_filtered) >= top_n:
             break
-    return similar_products_filtered, target_makeup_type
+    
+    # Limit to top_n products
+    limited_unique_products = similar_products_filtered[:top_n]
 
-@app.route('/recommendcbf', methods=['GET'])
-def recommend():
-    target_product_id = int(request.args.get('product_id'))
-    skin_type = request.args.get('skin_type', '')
-    skin_tone = request.args.get('skin_tone', '')
-    under_tone = request.args.get('under_tone', '')
-    top_n = int(request.args.get('top_n', 5))
-    top_similar_products, target_makeup_type = get_top_similar_products_mongo(target_product_id, skin_type, skin_tone, under_tone, top_n)
-    response = {
-        "target_makeup_type": target_makeup_type,
-        "top_similar_products": top_similar_products[:top_n]
-    }
-    return jsonify(response)
+    return limited_unique_products, target_makeup_type
+
+def cbf_word2vec(target_product_id, skin_type='', skin_tone='', under_tone='', top_n=''):
+    collection = get_collection()  # Get collection
+    df_produk = pd.DataFrame(list(collection.find()))
+    df_produk['unique_data_clean'] = df_produk['unique_data_clean'].astype(str).fillna('')
+    
+     # Tokenize the data
+    tokenized_data = df_produk['unique_data_clean'].apply(lambda x: x.split() if x else [])
+
+    # Train Word2Vec model
+    word2vec_model = Word2Vec(tokenized_data, vector_size=50, window=3, min_count=2, workers=4, sg=False)
+
+    # Generate product vectors
+    product_vectors = []
+    for tokens in tokenized_data:
+        if tokens:
+            vector = np.mean([word2vec_model.wv[token] for token in tokens if token in word2vec_model.wv], axis=0)
+        else:
+            vector = np.zeros(word2vec_model.vector_size)
+        product_vectors.append(vector)
+
+    # Find the target product
+    target_product_row = df_produk[df_produk['product_id'] == target_product_id]
+    if target_product_row.empty:
+        return [], None
+
+    target_product_description = target_product_row['unique_data_clean'].values[0]
+    target_makeup_type = target_product_row['makeup_part'].values[0]  # Get target makeup_part
+
+    # Append skin and makeup type if provided
+    if skin_type:
+        target_product_description += f" {skin_type}"
+    if skin_tone:
+        target_product_description += f" {skin_tone}"
+    if under_tone:
+        target_product_description += f" {under_tone}"
+
+    # Generate target vector
+    target_tokens = target_product_description.split() if target_product_description else []
+    if target_tokens:
+        target_vector = np.mean([word2vec_model.wv[token] for token in target_tokens if token in word2vec_model.wv], axis=0)
+    else:
+        target_vector = np.zeros(word2vec_model.vector_size)
+
+
+    cosine_sim = cosine_similarity([target_vector], product_vectors)
+    similarity_scores = list(enumerate(cosine_sim[0]))
+    sorted_similar_items = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
+
+    similar_products_filtered = []
+    unique_products = set()  # Use a set to keep track of unique product names
+
+    for i, score in sorted_similar_items:
+        product_id = df_produk['product_id'].iloc[i]
+        makeup_part = df_produk['makeup_part'].iloc[i]
+
+        if makeup_part == target_makeup_type and product_id != target_product_id:
+            product_name = df_produk['product_name'].iloc[i]
+            if product_name not in unique_products:  # Check for uniqueness
+                unique_products.add(product_name)  # Add to set
+                similar_products_filtered.append({
+                    "product_id": int(product_id),
+                    "product_name": product_name,
+                    "makeup_part": makeup_part,
+                    "score": float(score)
+                })
+        
+        if len(similar_products_filtered) >= top_n:
+            break
+    
+    # Limit to top_n products
+    limited_unique_products = similar_products_filtered[:top_n]
+
+    return limited_unique_products, target_makeup_type
+
+def configure_routes(app):
+    collection = get_collection()
+
+    @app.route('/products', methods=['GET'])
+    def get_products():
+        """Fetch all product descriptions from MongoDB."""
+        try:
+            products = collection.find().sort("price", -1).limit(20)
+            return dumps(products)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+    @app.route('/products/<int:product_id>', methods=['GET'])
+    def get_product(product_id):
+        """Fetch a product description by ID from MongoDB."""
+        try:
+            product = collection.find_one({"product_id": product_id})
+            if product:
+                return dumps(product)
+            else:
+                return jsonify({"error": "Product not found"}), 404
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/recommend/cbf/tdidf', methods=['GET'])
+    def recommend_cbf_tfidf():
+        target_product_id = int(request.args.get('product_id'))
+        skin_type = request.args.get('skin_type', '')
+        skin_tone = request.args.get('skin_tone', '')
+        under_tone = request.args.get('under_tone', '')
+        top_n = int(request.args.get('top_n', ''))
+
+        top_similar_products, target_makeup_type = cbf_tfidf(target_product_id, skin_type, skin_tone, under_tone, top_n)
+
+        response = {
+            "target_makeup_type": target_makeup_type,
+            "top_similar_products": [
+                {
+                    "product_id": int(product["product_id"]),  # Konversi ke int
+                    "product_name": product["product_name"],
+                    "makeup_part": product.get("makeup_part"),  # Jika ada
+                    "score": float(product["score"])  # Pastikan ini adalah float
+                } for product in top_similar_products[:top_n]
+            ]
+        }
+        
+        return jsonify(response)
+    
+    @app.route('/recommend/cbf/word2vec', methods=['GET'])
+    def recommend_cbf_word2vec():
+        target_product_id = int(request.args.get('product_id'))
+        skin_type = request.args.get('skin_type', '')
+        skin_tone = request.args.get('skin_tone', '')
+        under_tone = request.args.get('under_tone', '')
+        top_n = int(request.args.get('top_n', ''))
+
+        top_similar_products, target_makeup_type = cbf_word2vec(target_product_id, skin_type, skin_tone, under_tone, top_n)
+
+        response = {
+            "target_makeup_type": target_makeup_type,
+            "top_similar_products": [
+                {
+                    "product_id": int(product["product_id"]),  # Konversi ke int
+                    "product_name": product["product_name"],
+                    "makeup_part": product.get("makeup_part"),  # Jika ada
+                    "score": float(product["score"])  # Pastikan ini adalah float
+                } for product in top_similar_products[:top_n]
+            ]
+        }
+        
+        return jsonify(response)
 
 
 if __name__ == "__main__":
