@@ -7,7 +7,7 @@ from bson.json_util import dumps
 from bson.objectid import ObjectId  # Import ObjectId to handle MongoDB Object IDs
 from gensim.models import Word2Vec
 import numpy as np
-# from surprise import Dataset, Reader, SVD, accuracy
+from surprise import Dataset, Reader, SVD, accuracy
 from sklearn.model_selection import train_test_split
 
 
