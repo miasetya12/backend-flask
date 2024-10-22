@@ -374,7 +374,7 @@ def recommend_fasttext():
     under_tone = request.args.get('under_tone', default='', type=str)
     top_n = request.args.get('top_n', default='', type=int)  # Add top_n parameter
     vector_size = request.args.get('vector_size', default='', type=int)
-    epochs = request.args.get('epochs', default='', type=int)
+    epochs = request.args.get('epochs',default='', type=int)
 
     # Call the recommendation function
     recommendations_df, target_makeup_part, target_makeup_type = cbf_fasttext(target_product_id, user_id, skin_type, skin_tone, under_tone, vector_size, epochs)
