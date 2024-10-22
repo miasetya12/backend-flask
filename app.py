@@ -287,7 +287,7 @@ def recommend_word2vec():
 
     return jsonify(response)
 
-def cbf_fasttext(target_product_id, user_id, skin_type='', skin_tone='', under_tone=''):
+def cbf_fasttext(target_product_id, user_id, skin_type='', skin_tone='', under_tone='', vector_size='', epochs=''):
        # Convert MongoDB collections to pandas DataFrames
     data = pd.DataFrame(list(ratings_collection.find()))
     products = pd.DataFrame(list(products_collection.find()))
@@ -297,7 +297,7 @@ def cbf_fasttext(target_product_id, user_id, skin_type='', skin_tone='', under_t
     # Tokenize the data
     tokenized_data = products['unique_data_clean'].apply(lambda x: x.split() if x else [])
 
-    fasttext_model = FastText(sentences=tokenized_data, vector_size=50, window=5, min_count=2, workers=4, sg=True, epochs=10)
+    fasttext_model = FastText(sentences=tokenized_data, vector_size=vector_size, window=5, min_count=2, workers=4, sg=True, epochs=epochs)
     # Generate product vectors
     product_vectors = []
     for tokens in tokenized_data:
@@ -373,9 +373,11 @@ def recommend_fasttext():
     skin_tone = request.args.get('skin_tone', default='', type=str)
     under_tone = request.args.get('under_tone', default='', type=str)
     top_n = request.args.get('top_n', default='', type=int)  # Add top_n parameter
+    vector_size = request.args.get('vector_size', default='', type=int)
+    epochs = request.args.get('epochs', default='', type=int)
 
     # Call the recommendation function
-    recommendations_df, target_makeup_part, target_makeup_type = cbf_fasttext(target_product_id, user_id, skin_type, skin_tone, under_tone)
+    recommendations_df, target_makeup_part, target_makeup_type = cbf_fasttext(target_product_id, user_id, skin_type, skin_tone, under_tone, vector_size, epochs)
 
     recommendations_df = top_n_recommendations_unique(recommendations_df, target_makeup_type, target_makeup_part, top_n)
 
