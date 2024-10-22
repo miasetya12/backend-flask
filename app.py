@@ -185,88 +185,6 @@ def recommend_tfidf():
 
     return jsonify(response)
 
-##WORD2VEC
-# word2vec_model_path = "model\word2vec_model_sg_e20.model"
-# word2vec_model = Word2Vec.load(word2vec_model_path)
-
-# def cbf_word2vec(target_product_id, user_id, skin_type='', skin_tone='', under_tone=''):
-#       # Convert MongoDB collections to pandas DataFrames
-#     data = pd.DataFrame(list(ratings_collection.find()))
-#     products = pd.DataFrame(list(products_collection.find()))
-
-#     # Ensure 'unique_data_clean' column is not empty
-#     products['unique_data_clean'] = products['unique_data_clean'].astype(str).fillna('')
-
-#     # Tokenize the data
-#     tokenized_data = products['unique_data_clean'].apply(lambda x: x.split() if x else [])
-
-#     # Generate product vectors
-#     product_vectors = []
-#     for tokens in tokenized_data:
-#         valid_tokens = [word2vec_model.wv[token] for token in tokens if token in word2vec_model.wv]
-#         if valid_tokens:
-#             vector = np.mean(valid_tokens, axis=0)
-#         else:
-#             vector = np.zeros(word2vec_model.vector_size)
-#         product_vectors.append(vector)
-
-#     # Find the target product
-#     target_product_row = products[products['product_id'] == target_product_id]
-#     if target_product_row.empty:
-#         return pd.DataFrame(), None, None
-
-#     target_product_description = target_product_row['unique_data_clean'].values[0]
-#     target_makeup_part = target_product_row['makeup_part'].values[0]  # Get target makeup_part
-#     target_makeup_type = target_product_row['makeup_type'].values[0]
-
-#     # Append skin and makeup type if provided
-#     if skin_type:
-#         target_product_description += f" {skin_type}"
-#     if skin_tone:
-#         target_product_description += f" {skin_tone}"
-#     if under_tone:
-#         target_product_description += f" {under_tone}"
-
-#     # Generate target vector
-#     target_tokens = target_product_description.split() if target_product_description else []
-#     valid_target_tokens = [word2vec_model.wv[token] for token in target_tokens if token in word2vec_model.wv]
-#     if valid_target_tokens:
-#         target_vector = np.mean(valid_target_tokens, axis=0)
-#     else:
-#         target_vector = np.zeros(word2vec_model.vector_size)
-
-#     # Identify rated and unrated products
-#     all_items = products['product_id'].unique()
-#     user_ratings = data[data['user_id'] == user_id]
-#     rated_items = user_ratings['product_id'].unique()
-#     unrated_items = [item for item in all_items if item not in rated_items]
-
-#     # Calculate cosine similarity between target product and all others
-#     cosine_sim = cosine_similarity([target_vector], product_vectors)[0]
-
-#     # Sort similarity scores
-#     sorted_similar_items = sorted(enumerate(cosine_sim), key=lambda x: x[1], reverse=True)
-
-#     # Prepare filtered recommendations
-#     similar_products_filtered = [
-#         {
-#             "product_id": int(products['product_id'].iloc[i]),  # Use product_id based on index
-#             "product_name": products['product_name'].iloc[i],
-#             "makeup_part": products['makeup_part'].iloc[i],
-#             "makeup_type": products['makeup_type'].iloc[i],
-#             "score": float(score)
-#         }
-#         for i, score in sorted_similar_items if products['product_id'].iloc[i] in unrated_items
-#     ]
-
-#     # Convert to DataFrame and filter by makeup part
-#     similar_products_filtered_df = pd.DataFrame(similar_products_filtered)
-#     filtered_recommendations = similar_products_filtered_df[similar_products_filtered_df['makeup_part'] == target_makeup_part]
-
-#     return filtered_recommendations, target_makeup_part, target_makeup_type
-
-
-
 def cbf_word2vec(target_product_id, user_id, skin_type='', skin_tone='', under_tone=''):
       # Convert MongoDB collections to pandas DataFrames
     data = pd.DataFrame(list(ratings_collection.find()))
@@ -369,10 +287,6 @@ def recommend_word2vec():
 
     return jsonify(response)
 
-#FASTTEXT
-# fasttext_model_path = "model/fasttext_model_sg_e20.model"
-# fasttext_model = FastText.load(fasttext_model_path)
-
 def cbf_fasttext(target_product_id, user_id, skin_type='', skin_tone='', under_tone=''):
        # Convert MongoDB collections to pandas DataFrames
     data = pd.DataFrame(list(ratings_collection.find()))
@@ -383,7 +297,7 @@ def cbf_fasttext(target_product_id, user_id, skin_type='', skin_tone='', under_t
     # Tokenize the data
     tokenized_data = products['unique_data_clean'].apply(lambda x: x.split() if x else [])
 
-    fasttext_model = FastText(sentences=tokenized_data, vector_size=100, window=5, min_count=2, workers=4, sg=True, epochs=20)
+    fasttext_model = FastText(sentences=tokenized_data, vector_size=100, window=5, min_count=2, workers=4, sg=True, epochs=15)
     # Generate product vectors
     product_vectors = []
     for tokens in tokenized_data:
