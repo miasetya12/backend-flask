@@ -297,7 +297,7 @@ def cbf_fasttext(target_product_id, user_id, skin_type='', skin_tone='', under_t
     # Tokenize the data
     tokenized_data = products['unique_data_clean'].apply(lambda x: x.split() if x else [])
 
-    fasttext_model = FastText(sentences=tokenized_data, vector_size=100, window=5, min_count=2, workers=4, sg=True, epochs=15)
+    fasttext_model = FastText(sentences=tokenized_data, vector_size=50, window=5, min_count=2, workers=4, sg=True, epochs=10)
     # Generate product vectors
     product_vectors = []
     for tokens in tokenized_data:
